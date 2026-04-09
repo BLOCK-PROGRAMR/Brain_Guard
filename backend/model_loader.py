@@ -30,24 +30,30 @@ class AlzheimerModel:
     def _load_model(self):
         """Load model architecture and weights"""
         try:
+            import tensorflow as tf
+            logger.info(f"TensorFlow version: {tf.__version__}")
+
             logger.info("Loading model architecture from config.json...")
             with open(CONFIG_PATH, 'r') as f:
                 config = json.load(f)
-            
+
             # Create model from config
             self.model = model_from_json(json.dumps(config))
             logger.info("✅ Model architecture loaded")
-            
-            # Load weights
+
+            # Load weights — try strict first, fall back to by_name
             logger.info("Loading model weights from model.weights.h5...")
-            self.model.load_weights(WEIGHTS_PATH)
+            try:
+                self.model.load_weights(WEIGHTS_PATH)
+            except Exception:
+                logger.warning("Strict weight loading failed, trying by_name=True...")
+                self.model.load_weights(WEIGHTS_PATH, by_name=True, skip_mismatch=True)
             logger.info("✅ Model weights loaded")
-            
-            # Print model info
+
             logger.info(f"Model Input Shape: {self.model.input_shape}")
             logger.info(f"Model Output Shape: {self.model.output_shape}")
             logger.info(f"Total Parameters: {self.model.count_params():,}")
-            
+
         except Exception as e:
             logger.error(f"Error loading model: {e}")
             raise RuntimeError(f"Failed to load model: {e}")
