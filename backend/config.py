@@ -7,7 +7,7 @@ from pathlib import Path
 
 # Paths
 BASE_DIR = Path(__file__).resolve().parent
-MODEL_DIR = Path("/Users/nithinkumar/Desktop/Alz/final_model (1)")
+MODEL_DIR = Path(__file__).resolve().parent / "model"
 CONFIG_PATH = MODEL_DIR / "config.json"
 WEIGHTS_PATH = MODEL_DIR / "model.weights.h5"
 
