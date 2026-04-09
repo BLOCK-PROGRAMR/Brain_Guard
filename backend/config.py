@@ -18,10 +18,12 @@ API_DESCRIPTION = "Deep Learning API for Alzheimer's Disease Detection from MRI 
 
 # CORS Settings
 CORS_ORIGINS = [
-    "http://localhost:3000",      # React dev server
-    "http://localhost:8000",      # FastAPI docs
+    "http://localhost:3000",
+    "http://localhost:8000",
     "http://127.0.0.1:3000",
     "http://127.0.0.1:8000",
+    os.getenv("FRONTEND_URL", ""),        # Set this in Render env vars
+    "https://*.vercel.app",               # Vercel frontend
 ]
 
 # Model Settings
