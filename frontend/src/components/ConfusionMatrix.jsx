@@ -1,12 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import axios from 'axios';
 
-const CLASS_SHORT = {
-  'Non Demented':       'Non\nDemented',
-  'Very Mild Dementia': 'Very Mild\nDementia',
-  'Mild Dementia':      'Mild\nDementia',
-  'Moderate Dementia':  'Moderate\nDementia',
-};
 
 const CLASS_COLOR = {
   'Non Demented':       '#059669',
