@@ -3,6 +3,8 @@ Grad-CAM (Gradient-weighted Class Activation Mapping) utilities
 For visualizing which regions influence model predictions
 """
 
+import matplotlib
+matplotlib.use('Agg')  # Headless backend for servers with no display
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras.preprocessing import image

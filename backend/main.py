@@ -12,6 +12,10 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 import uvicorn
 
+# Must set matplotlib backend before any other matplotlib import
+import matplotlib
+matplotlib.use('Agg')  # Headless backend for servers with no display
+
 from config import (
     API_TITLE, API_VERSION, API_DESCRIPTION,
     CORS_ORIGINS, ALLOWED_EXTENSIONS, MAX_FILE_SIZE,
