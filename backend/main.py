@@ -292,91 +292,63 @@ async def predict_with_gradcam(file: UploadFile = File(...)):
             tmp_path = tmp.name
         
         try:
-            # Get model and preprocess image
+            import gc
             model = get_model()
             img_array = model.preprocess_image(tmp_path)
-            
-            # Make prediction
             prediction = model.predict(tmp_path)
-            
+
             # Generate Grad-CAM heatmap
             gradcam = GradCAM(model.model)
             heatmap = gradcam.generate_heatmap(img_array, pred_index=prediction['class_index'])
-            
-            # Resize heatmap to match image size (224x224)
-            from PIL import Image as PILImage
-            
-            # Convert heatmap to PIL for resizing
-            heatmap_min = heatmap.min()
-            heatmap_max = heatmap.max()
-            heatmap_norm_pil = ((heatmap - heatmap_min) / (heatmap_max - heatmap_min + 1e-8) * 255).astype(np.uint8)
-            heatmap_pil_small = PILImage.fromarray(heatmap_norm_pil)
-            heatmap_resized_pil = heatmap_pil_small.resize((224, 224), PILImage.Resampling.LANCZOS)
-            heatmap_resized = np.array(heatmap_resized_pil).astype(float) / 255.0
-            
-            # Create colormap visualization
-            import matplotlib.pyplot as plt
-            import matplotlib.cm as cm
-            
-            # Normalize heatmap to 0-1 with better contrast
-            heatmap_norm = (heatmap_resized - heatmap_resized.min()) / (heatmap_resized.max() - heatmap_resized.min() + 1e-8)
-            # Apply power law for better contrast
-            heatmap_norm = np.power(heatmap_norm, 0.4)
-            
-            # Load original image as grayscale
-            original_pil = Image.open(tmp_path).convert('L')
-            original_pil.thumbnail((224, 224), Image.Resampling.LANCZOS)
-            original_gray_arr = np.array(original_pil)
-            
-            # Apply better colormap (inferno for medical imaging)
-            colormap = cm.get_cmap('inferno')
-            heatmap_colored = colormap(heatmap_norm)
-            heatmap_rgb = (heatmap_colored[:, :, :3] * 255).astype(np.uint8)
-            
-            # Create overlay by blending heatmap with original grayscale image
-            # Ensure both images are same size and mode
+
+            # Free memory immediately after heatmap generation
+            gc.collect()
+
+            # Normalize heatmap to 0-255
+            h_min, h_max = heatmap.min(), heatmap.max()
+            heatmap_norm = ((heatmap - h_min) / (h_max - h_min + 1e-8) * 255).astype(np.uint8)
+
+            # Resize heatmap to 224x224 using PIL only (no matplotlib)
+            heatmap_pil = Image.fromarray(heatmap_norm, mode='L').resize((224, 224), Image.Resampling.LANCZOS)
+            heatmap_arr = np.array(heatmap_pil)
+
+            # Apply inferno colormap manually using numpy (avoid matplotlib memory cost)
+            # Map grayscale 0-255 to inferno RGB approximation
+            t = heatmap_arr / 255.0
+            r = np.clip(0.5 + 1.5 * t, 0, 1)
+            g = np.clip(t * 0.8, 0, 1)
+            b = np.clip(0.6 - t * 0.6, 0, 1)
+            heatmap_rgb = (np.stack([r, g, b], axis=2) * 255).astype(np.uint8)
             heatmap_pil_img = Image.fromarray(heatmap_rgb)
-            original_gray_pil = Image.fromarray(original_gray_arr)
-            
-            # Resize gray to match heatmap if needed
-            if heatmap_pil_img.size != original_gray_pil.size:
-                original_gray_pil = original_gray_pil.resize(heatmap_pil_img.size, Image.Resampling.LANCZOS)
-            
-            # Convert to numpy arrays for blending
-            heatmap_array = np.array(heatmap_pil_img).astype(float)
-            gray_array = np.array(original_gray_pil).astype(float)
-            
-            # Expand gray to RGB (repeat across channels)
-            gray_rgb = np.stack([gray_array, gray_array, gray_array], axis=2)
-            
-            # Blend: 60% heatmap, 40% original
-            blended = (heatmap_array * 0.6 + gray_rgb * 0.4).astype(np.uint8)
+
+            # Load original as grayscale
+            original_pil = Image.open(tmp_path).convert('L').resize((224, 224), Image.Resampling.LANCZOS)
+            original_gray_arr = np.array(original_pil)
+            gray_rgb = np.stack([original_gray_arr] * 3, axis=2).astype(float)
+
+            # Blend 60% heatmap + 40% original
+            blended = (heatmap_rgb.astype(float) * 0.6 + gray_rgb * 0.4).astype(np.uint8)
             overlay_pil = Image.fromarray(blended)
-            
-            # Encode overlay image to base64
-            buffer_overlay = io.BytesIO()
-            overlay_pil.save(buffer_overlay, format='PNG')
-            buffer_overlay.seek(0)
-            overlay_b64 = base64.b64encode(buffer_overlay.getvalue()).decode()
-            
-            # Also encode just the heatmap
-            buffer_heatmap = io.BytesIO()
-            heatmap_pil_img.save(buffer_heatmap, format='PNG')
-            buffer_heatmap.seek(0)
-            heatmap_b64 = base64.b64encode(buffer_heatmap.getvalue()).decode()
-            
-            # Encode original image
-            buffer_orig = io.BytesIO()
-            original_pil.save(buffer_orig, format='PNG')
-            buffer_orig.seek(0)
-            original_b64 = base64.b64encode(buffer_orig.getvalue()).decode()
+
+            # Encode all three images to base64
+            def to_b64(img):
+                buf = io.BytesIO()
+                img.save(buf, format='JPEG', quality=85)
+                buf.seek(0)
+                return base64.b64encode(buf.getvalue()).decode()
+
+            overlay_b64  = to_b64(overlay_pil)
+            heatmap_b64  = to_b64(heatmap_pil_img)
+            original_b64 = to_b64(original_pil)
+
+            gc.collect()
             
             return {
                 "status": "success",
                 "prediction": prediction,
-                "original_image": f"data:image/png;base64,{original_b64}",
-                "gradcam_heatmap": f"data:image/png;base64,{heatmap_b64}",
-                "gradcam_overlay": f"data:image/png;base64,{overlay_b64}",
+                "original_image": f"data:image/jpeg;base64,{original_b64}",
+                "gradcam_heatmap": f"data:image/jpeg;base64,{heatmap_b64}",
+                "gradcam_overlay": f"data:image/jpeg;base64,{overlay_b64}",
                 "explanation": f"Red/Yellow regions show areas the model focused on for predicting '{prediction['predicted_class']}'. The overlay blends the heatmap with the original MRI image."
             }
             
