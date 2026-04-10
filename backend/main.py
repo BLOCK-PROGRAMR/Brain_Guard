@@ -293,9 +293,18 @@ async def predict_with_gradcam(file: UploadFile = File(...)):
         
         try:
             import gc
+            import tensorflow as tf
+
             model = get_model()
             img_array = model.preprocess_image(tmp_path)
             prediction = model.predict(tmp_path)
+
+            # Limit TF memory before Grad-CAM
+            tf.keras.backend.clear_session()
+            gpus = tf.config.list_physical_devices('GPU')
+            if gpus:
+                for gpu in gpus:
+                    tf.config.experimental.set_memory_growth(gpu, True)
 
             # Generate Grad-CAM heatmap
             gradcam = GradCAM(model.model)
@@ -357,6 +366,12 @@ async def predict_with_gradcam(file: UploadFile = File(...)):
     
     except HTTPException:
         raise
+    except MemoryError as e:
+        logger.error(f"Grad-CAM OOM: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Not enough memory to generate Grad-CAM on free tier. Use the Diagnosis tab instead."
+        )
     except Exception as e:
         logger.error(f"Grad-CAM error: {e}")
         import traceback
